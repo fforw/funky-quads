@@ -1,3 +1,3 @@
-# Simple Starter
+# Funky Squares
 
-Simple JS build starter for simple, client-only demos.
+Exploratory procedural generation
