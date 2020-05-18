@@ -5,13 +5,15 @@
     "author": "Sven Helmberger",
     "license": "Apache-2.0",
     "dependencies": {
+        "classnames": "^2.2.6",
         "debounce": "^1.2.0",
         "domready": "^1.0.8",
         "performance-now": "^2.1.0",
         "raf": "^3.4.1",
         "react": "^16.13.1",
         "react-dom": "^16.13.1",
-        "simplex-noise": "^2.4.0"
+        "simplex-noise": "^2.4.0",
+        "use-debounce": "^3.4.2"
     },
     "devDependencies": {
         "@babel/cli": "^7.8.4",

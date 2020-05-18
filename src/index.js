@@ -1,68 +1,91 @@
 import domready from "domready"
+import React from "react"
+import ReactDOM from "react-dom"
 import raf from "raf"
 // noinspection ES6UnusedImports
 import STYLE from "./style.css"
 import Vector from "./vector";
+import Settings from "./Settings";
 
 
 const PHI = (1 + Math.sqrt(5)) / 2;
 const TAU = Math.PI * 2;
 const DEG2RAD_FACTOR = TAU / 360;
 
-const config = {
-    width: 0,
-    height: 0
-};
+
+
 
 let ctx, canvas;
 
-const EDGE_LENGTH = 80;
 const SIZE = 10; // count + case(1=odd face 2=outmost tri) + 4 * x/y
 
 const SIXTH = TAU / 6;
-
-const DIRECTIONS = [
-    new Vector(
-        Math.cos(0) * EDGE_LENGTH,
-        Math.sin(0) * EDGE_LENGTH
-    ),
-    new Vector(
-        Math.cos(SIXTH) * EDGE_LENGTH,
-        Math.sin(SIXTH) * EDGE_LENGTH
-    ),
-    new Vector(
-        Math.cos(SIXTH * 2) * EDGE_LENGTH,
-        Math.sin(SIXTH * 2) * EDGE_LENGTH
-    ),
-    new Vector(
-        Math.cos(SIXTH * 3) * EDGE_LENGTH,
-        Math.sin(SIXTH * 3) * EDGE_LENGTH
-    ),
-    new Vector(
-        Math.cos(SIXTH * 4) * EDGE_LENGTH,
-        Math.sin(SIXTH * 4) * EDGE_LENGTH
-    ),
-    new Vector(
-        Math.cos(SIXTH * 5) * EDGE_LENGTH,
-        Math.sin(SIXTH * 5) * EDGE_LENGTH
-    )
-];
-
-const LIMIT = 5;
-const NUM_FACES = calculateNumberOfFaces(LIMIT);
-const LENGTH = NUM_FACES * SIZE;
-const NUM_EDGES = NUM_FACES * 3;
-
 
 function calculateNumberOfFaces(limit)
 {
     return 6 * (limit + 1) * (limit + 1);
 }
 
+const config = {
+    width: 0,
+    height: 0,
+    edgeLength: 80,
+    numberOfRings: 5,
+    iterations: 500,
+    removeEdges: 90
+};
 
-function createHexagonalTiles(limit)
+function updateConfig(config)
 {
-    const faces = new Float64Array(LENGTH);
+    config.numFaces = calculateNumberOfFaces(config.numberOfRings)
+    config.firstPassLen = config.numFaces * SIZE
+    config.firstPassNumEdges = config.numFaces * 3
+    config.edgeLength = (config.height / (config.numberOfRings * 2 + 1))|0;
+
+    config.recreate = cfg =>
+    {
+        Object.assign(config, cfg)
+        resize();
+    }
+    //console.log({config})
+}
+
+
+function createHexagonalTiles(config)
+{
+
+    const limit = config.numberOfRings;
+
+    console.log("createHexagonalTiles", limit);
+
+    const DIRECTIONS = [
+        new Vector(
+            Math.cos(0) * config.edgeLength,
+            Math.sin(0) * config.edgeLength
+        ),
+        new Vector(
+            Math.cos(SIXTH) * config.edgeLength,
+            Math.sin(SIXTH) * config.edgeLength
+        ),
+        new Vector(
+            Math.cos(SIXTH * 2) * config.edgeLength,
+            Math.sin(SIXTH * 2) * config.edgeLength
+        ),
+        new Vector(
+            Math.cos(SIXTH * 3) * config.edgeLength,
+            Math.sin(SIXTH * 3) * config.edgeLength
+        ),
+        new Vector(
+            Math.cos(SIXTH * 4) * config.edgeLength,
+            Math.sin(SIXTH * 4) * config.edgeLength
+        ),
+        new Vector(
+            Math.cos(SIXTH * 5) * config.edgeLength,
+            Math.sin(SIXTH * 5) * config.edgeLength
+        )
+    ];
+
+    const faces = new Float64Array(config.firstPassLen);
 
     let off = 0;
 
@@ -113,8 +136,6 @@ function createHexagonalTiles(limit)
         numTris += 2;
 
     } while (count++ < limit);
-
-    console.log({length: LENGTH, off, NUM_EDGES})
 
     return faces;
 }
@@ -199,23 +220,16 @@ function findOtherEdge(faces, x0, y0, x1, y1, index, out)
 
 const out = {index: -1, edge: 0};
 
-
-function printFace(faces, index)
+function removeRandomEdges(config, faces)
 {
-    return (
-        faces[index] + "," + faces[index + 1] + "|" +
-        faces[index + 2] + "," + faces[index + 3] + "|" +
-        faces[index + 4] + "," + faces[index + 5]
-    );
-}
+    const count = config.firstPassNumEdges * config.removeEdges / 100;
 
+    console.log("remove attempts", count);
 
-function removeRandomEdges(faces, count)
-{
     let success = 0;
     for (let i = 0; i < count; i++)
     {
-        const index = ((Math.random() * NUM_FACES) | 0) * SIZE;
+        const index = ((Math.random() * config.numFaces) | 0) * SIZE;
         if (faces[index + 8] === 3)
         {
             const caseMask = faces[index + 9];
@@ -281,7 +295,7 @@ function calculateNumNodes(faces)
 {
     let tris = 0;
     let quads = 0;
-    for (let i = 0; i < LENGTH; i += SIZE)
+    for (let i = 0; i < config.firstPassLen; i += SIZE)
     {
         const count = faces[i + 8];
 
@@ -294,6 +308,8 @@ function calculateNumNodes(faces)
             quads++;
         }
     }
+
+    console.log({quads,tris})
 
     // we divide each quad in 9 nodes and each tri into 7 nodes
     return quads * 9 + tris * 7;
@@ -308,9 +324,8 @@ const SOUTH = 2;
 const WEST = 3;
 
 
-function subdivide(faces)
+function subdivide(config, faces)
 {
-
     const numNodes = calculateNumNodes(faces);
 
     const nodes = new Float64Array(numNodes * NODE_SIZE);
@@ -351,7 +366,7 @@ function subdivide(faces)
         nodes[n1 + 2 + ((dir + 2) & 3)] = n0;
     }
 
-    for (let i = 0; i < LENGTH; i += SIZE)
+    for (let i = 0; i < config.firstPassLen; i += SIZE)
     {
         const count = faces[i + 8];
 
@@ -466,8 +481,10 @@ function maxPower(power)
 
 const SQRT_2 = Math.sqrt(2);
 
-function ease(graph, targetLength, iterations = 1)
+function ease(config, graph, iterations = 1)
 {
+    const targetLength = config.edgeLength / 4;
+
     const {length} = graph;
 
     const minDistance = targetLength * SQRT_2;
@@ -613,18 +630,27 @@ function ease(graph, targetLength, iterations = 1)
     }
 }
 
-
-const faces = createHexagonalTiles(LIMIT);
-removeRandomEdges(faces, NUM_EDGES * 0.9)
-const graph = subdivide(faces);
-ease(graph, EDGE_LENGTH / 4, 500);
-
-console.log("GRAPH SIZE", graph.length / NODE_SIZE, graph);
-
-
-function mainLoop()
+function createGraph(config)
 {
-    //ease(graph, EDGE_LENGTH / 4);
+    updateConfig(config);
+
+    console.log("CREATE GRAPH", config);
+
+    const faces = createHexagonalTiles(config);
+    removeRandomEdges(config, faces)
+    const graph = subdivide(config, faces);
+    ease(config, graph, config.iterations);
+
+    console.log("GRAPH SIZE", graph.length / NODE_SIZE, graph);
+
+    return graph;
+}
+
+let graph;
+
+function redrawGraph()
+{
+    //ease(graph, config.edgeLength / 4);
 
     // // draw original quads and tris
     //
@@ -632,7 +658,7 @@ function mainLoop()
     // ctx.lineWidth = 4;
     //
     //
-    // for (let pos = 0; pos < LENGTH; pos += SIZE)
+    // for (let pos = 0; pos < config.firstPassLen; pos += SIZE)
     // {
     //     const count = faces[pos + 8];
     //
@@ -657,6 +683,14 @@ function mainLoop()
     //     }
     // }
 
+    ctx.save();
+
+    const hw = config.width /2;
+    const hh = config.height /2;
+
+    ctx.translate(hw, hh)
+
+
     ctx.strokeStyle = "#080";
     ctx.lineWidth = 1;
 
@@ -664,10 +698,6 @@ function mainLoop()
 
 
     ctx.fillStyle = "#000";
-
-    const hw = config.width /2;
-    const hh = config.height /2;
-
     ctx.fillRect(-hw,-hh, config.width, config.height)
 
     function drawEdge(x0, y0, node)
@@ -702,8 +732,27 @@ function mainLoop()
 
     }
 
+    ctx.restore();
 
-    raf(mainLoop)
+    //raf(mainLoop)
+}
+
+
+function resize()
+{
+    const width = (window.innerWidth * 0.85) | 0;
+    const height = (window.innerHeight) | 0;
+
+    config.width = width;
+    config.height = height;
+
+    canvas.width = width;
+    canvas.height = height;
+
+
+    graph = createGraph(config)
+
+    raf(redrawGraph);
 }
 
 
@@ -713,23 +762,22 @@ domready(
         canvas = document.getElementById("screen");
         ctx = canvas.getContext("2d");
 
-        const width = (window.innerWidth) | 0;
-        const height = (window.innerHeight) | 0;
-
-        config.width = width;
-        config.height = height;
-
-        canvas.width = width;
-        canvas.height = height;
-
-        ctx.fillStyle = "#000";
-        ctx.strokeStyle = "#f00";
-        ctx.fillRect(0, 0, width, height);
 
         ctx.fillStyle = "#888";
         ctx.strokeStyle = "#f00";
-        ctx.translate(width >> 1, height >> 1)
 
-        raf(mainLoop)
+        resize();
+
+        ReactDOM.render(
+            <Settings
+                config={config}
+            />,
+            document.getElementById("ui")
+        )
+
+
+        window.addEventListener("resize", resize, true);
+
+
     }
 );
