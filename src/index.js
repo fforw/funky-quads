@@ -29,8 +29,9 @@ const config = {
     height: 0,
     edgeLength: 80,
     numberOfRings: 10,
-    iterations: 80,
+    maxIterations: 80,
     removeEdges: 50,
+    minEnergy: 2,
     animatedEasing: true
 };
 
@@ -40,13 +41,15 @@ function updateConfig(config)
     config.firstPassLen = config.numFaces * SIZE
     config.firstPassNumEdges = config.numFaces * 3
     config.edgeLength = (config.height / (config.numberOfRings * 2 + 2))|0;
+    config.animating = config.animatedEasing;
+    config.relaxCount = 0;
 
     config.recreate = cfg =>
     {
         Object.assign(config, cfg)
         resize();
     }
-    //console.log({config})
+    console.log({config})
 }
 
 
@@ -56,7 +59,7 @@ function createHexagonalTiles(config)
 
     const limit = config.numberOfRings;
 
-    console.log("createHexagonalTiles", limit);
+    //console.log("createHexagonalTiles", limit);
 
     const DIRECTIONS = [
         new Vector(
@@ -227,7 +230,7 @@ function removeRandomEdges(config, faces)
 {
     const count = config.firstPassNumEdges * config.removeEdges / 100;
 
-    console.log("remove attempts", count);
+    //console.log("remove attempts", count);
 
     let success = 0;
 
@@ -317,28 +320,13 @@ function removeRandomEdges(config, faces)
                     // remove our face
                     faces[index + 8] = 0;
 
-                    // if (otherIsOutmostTri)
-                    // {
-                    //     console.log("OUTMOST edge after split", printEdge(faces, otherIndex, faces[otherIndex + 9]))
-                    //     console.log("face after", faces.slice(otherIndex, otherIndex + SIZE))
-                    // }
-
-
-                    const after = printEdge(faces, otherIndex, faces[otherIndex + 9])
-                    if (otherIsOutmostTri && before !== after)
-                    {
-                        console.log("Mismatch: before", before, "after", after, "CASE " + otherEdge);
-                    }
-
-
-                    //console.log("Face #", printFace(faces,index), ", edge = ", edge, " paired with  Face #" + printFace(faces,out.index), ", edge = ", out.edge)
                     success++;
                 }
             }
         }
     }
 
-    console.log("Success:", success, "out of", count);
+    console.log("Successfully removed", success, "out of", count);
 
     return success;
 }
@@ -362,7 +350,7 @@ function calculateNumNodes(faces)
         }
     }
 
-    console.log({quads,tris})
+    //console.log({quads,tris})
 
     // we divide each quad in 9 nodes and each tri into 7 nodes
     return quads * 9 + tris * 7;
@@ -552,18 +540,19 @@ function subdivide(config, faces)
     }
 
     const fillRate = (pos / NODE_SIZE) / numNodes;
-    console.log("SUBDIVIDED: limit = ", numNodes, ", fill rate = ", fillRate);
+    //console.log("SUBDIVIDED: limit = ", numNodes, ", fill rate = ", fillRate);
 
     return nodes.slice(0, pos);
 }
 
-function relaxWeighted(config, graph, iterations = 1)
+function relaxWeighted(config, graph, maxIterations = 1)
 {
 
     const { length } = graph;
 
-    for (let i = 0; i < iterations; i++)
+    for (let i = 0; i < maxIterations; i++)
     {
+        let energy = 0;
         for (let j = 0; j < length; j += NODE_SIZE)
         {
             if (!graph[j + 2])
@@ -593,33 +582,34 @@ function relaxWeighted(config, graph, iterations = 1)
                     sumWeight += weight;
                 }
 
-                graph[j] = centerX / sumWeight;
-                graph[j + 1] = centerY / sumWeight;
+                const x1 = centerX / sumWeight
+                const y1 = centerY / sumWeight;
+
+                const dx = x1 - x0;
+                const dy = y1 - y0;
+
+                graph[j] = x1;
+                graph[j + 1] = y1;
+
+                energy += dx*dx+dy*dy;
+
             }
         }
+
+        if (energy < config.minEnergy)
+        {
+            console.log("Reached minimal energy", config.minEnergy, "after", config.relaxCount, "iterations")
+            return true;
+        }
+        config.relaxCount++;
     }
 
-    //
-    //
-    //
-    // const neighbour = this.neighbours[i];
-    // let sumX = 0.;
-    // let sumY = 0.;
-    // let weight = 0.;
-    // for (let j = 0; j < neighbour.length; j++)
-    // {
-    //     // weighted by distance, the further two points are, the more they attract each other
-    //     // big edges will tend to shrink and small edges will tend to grow
-    //     // this results in slightly less variance in the quads area
-    //     // the grid also converges faster to equilibrium
-    //     let w = Math.sqrt(Math.pow(this.points[i][0] - this.points[neighbour[j]][0], 2) + Math.pow(this.points[i][1] - this.points[neighbour[j]][1], 2));
-    //
-    //     sumX += this.points[neighbour[j]][0] * w;
-    //     sumY += this.points[neighbour[j]][1] * w;
-    //     weight += w;
-    // }
-    // this.points[i][0] = sumX / weight;
-    // this.points[i][1] = sumY / weight;
+    if (!config.animatedEasing)
+    {
+        console.log("Stopping after max iterations = " + config.maxIterations)
+    }
+
+    return false;
 }
 
 let faces;
@@ -627,7 +617,7 @@ function createGraph(config)
 {
     updateConfig(config);
 
-    console.log("CREATE GRAPH", config);
+    //console.log("CREATE GRAPH", config);
 
     const f = createHexagonalTiles(config);
 
@@ -637,12 +627,12 @@ function createGraph(config)
     const graph = subdivide(config, f);
 
 
-    if (!config.animatedEasing)
+    if (!config.animating)
     {
-        relaxWeighted(config, graph, config.iterations);
+        relaxWeighted(config, graph, config.maxIterations);
     }
 
-    console.log("GRAPH SIZE", graph.length / NODE_SIZE, graph);
+    //console.log("GRAPH SIZE", graph.length / NODE_SIZE, graph);
 
     return graph;
 }
@@ -795,9 +785,12 @@ function redrawGraph()
 
     ctx.restore();
 
-    if (config.animatedEasing)
+    if (config.animating)
     {
-        relaxWeighted(config, graph);
+        if (relaxWeighted(config, graph))
+        {
+            config.animating = false;
+        }
         raf(redrawGraph)
     }
 }

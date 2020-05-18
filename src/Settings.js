@@ -142,7 +142,7 @@ const Settings = ({config: configFromProps}) => {
 
     const [config, dispatch] = useReducer(reducer, configFromProps);
 
-    console.log("Render", config);
+    //console.log("Render", config);
 
     return (
         <div>
@@ -152,17 +152,8 @@ const Settings = ({config: configFromProps}) => {
                 config={ config }
                 dispatch={dispatch}
                 min={1}
-                max={20}
+                max={30}
 
-            />
-            <NumberInput
-                label="Easing-Iterations"
-                name="iterations"
-                config={ config }
-                dispatch={dispatch}
-                min={0}
-                disabled={ config.animatedEasing }
-                max={2000}
             />
             <Checkbox
                 label="Animated Easing"
