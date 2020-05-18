@@ -121,6 +121,9 @@ const Checkbox = ({label, name, config, dispatch, disabled}) =>  {
     )
 }
 
+
+
+
 const NumberInput = ({ min, max, ... rest}) =>  {
     return (
         <Input
@@ -138,9 +141,12 @@ const NumberInput = ({ min, max, ... rest}) =>  {
 }
 
 
-const Settings = ({config: configFromProps}) => {
+const Settings = ({config: configFromProps, recreate}) => {
 
-    const [config, dispatch] = useReducer(reducer, configFromProps);
+    const [config, dispatch] = useReducer(reducer, null, () => ({
+        ... configFromProps,
+        recreate
+    }));
 
     //console.log("Render", config);
 
@@ -168,11 +174,11 @@ const Settings = ({config: configFromProps}) => {
                 config={ config }
                 dispatch={dispatch}
                 min={0}
-                max={100}
+                max={200}
             />
             <button
                 type="button"
-                onClick={ () => config.recreate(config) }
+                onClick={ () => recreate(config) }
             >
                 Redraw
             </button>

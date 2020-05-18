@@ -5,6 +5,7 @@
     "author": "Sven Helmberger",
     "license": "Apache-2.0",
     "dependencies": {
+        "@fforw/organic-quads": "^0.0.3",
         "classnames": "^2.2.6",
         "debounce": "^1.2.0",
         "domready": "^1.0.8",
