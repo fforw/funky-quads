@@ -13,8 +13,6 @@ const TAU = Math.PI * 2;
 const DEG2RAD_FACTOR = TAU / 360;
 
 
-
-
 let ctx, canvas;
 
 const SIZE = 10; // count + case(1=odd face 2=outmost tri) + 4 * x/y
@@ -31,7 +29,7 @@ const config = {
     height: 0,
     edgeLength: 80,
     numberOfRings: 5,
-    iterations: 500,
+    iterations: 100,
     removeEdges: 90
 };
 
@@ -468,7 +466,7 @@ function subdivide(config, faces)
 
 
 const PULL_POWER = 0.1;
-const PUSH_POWER = 0.1;
+const PUSH_POWER = 0.2;
 
 /**
  * Maximum power being applied by a force
@@ -650,7 +648,7 @@ let graph;
 
 function redrawGraph()
 {
-    //ease(graph, config.edgeLength / 4);
+    ease(config, graph, config.iterations);
 
     // // draw original quads and tris
     //
@@ -692,7 +690,7 @@ function redrawGraph()
 
 
     ctx.strokeStyle = "#080";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
 
     const {length} = graph;
 
@@ -734,7 +732,7 @@ function redrawGraph()
 
     ctx.restore();
 
-    //raf(mainLoop)
+    raf(redrawGraph)
 }
 
 
