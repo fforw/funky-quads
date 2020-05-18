@@ -35,7 +35,7 @@ function reducer(state,action)
 }
 
 
-const Input = ({label, name, config, dispatch, placeholder, validate, error}) =>  {
+const Input = ({label, name, config, dispatch, placeholder, validate, disabled, error}) =>  {
 
     const errorForField = config.errors && config.errors[name];
 
@@ -77,6 +77,7 @@ const Input = ({label, name, config, dispatch, placeholder, validate, error}) =>
                 placeholder={placeholder}
                 title={ placeholder }
                 size={4}
+                disabled={disabled}
                 onChange={ ev => {
                     let value = ev.target.value;
 
@@ -89,6 +90,34 @@ const Input = ({label, name, config, dispatch, placeholder, validate, error}) =>
             }
         </div>
 
+    )
+}
+
+const Checkbox = ({label, name, config, dispatch, disabled}) =>  {
+
+    return (
+        <div>
+            <label>
+                {
+                    label
+                }
+            <input
+                type="checkbox"
+                defaultChecked={ config[name] }
+                size={4}
+                disabled={disabled}
+                onChange={ ev => {
+                    let value = ev.target.checked;
+
+                    dispatch({
+                        type: SET_FIELD,
+                        name,
+                        value
+                    })
+                }}
+            />
+            </label>
+        </div>
     )
 }
 
@@ -123,7 +152,7 @@ const Settings = ({config: configFromProps}) => {
                 config={ config }
                 dispatch={dispatch}
                 min={1}
-                max={10}
+                max={20}
 
             />
             <NumberInput
@@ -132,8 +161,16 @@ const Settings = ({config: configFromProps}) => {
                 config={ config }
                 dispatch={dispatch}
                 min={0}
+                disabled={ config.animatedEasing }
                 max={2000}
             />
+            <Checkbox
+                label="Animated Easing"
+                name="animatedEasing"
+                config={ config }
+                dispatch={dispatch}
+            />
+
             <NumberInput
                 label="Percent of edges to remove"
                 name="removeEdges"

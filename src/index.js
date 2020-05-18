@@ -28,9 +28,10 @@ const config = {
     width: 0,
     height: 0,
     edgeLength: 80,
-    numberOfRings: 5,
-    iterations: 100,
-    removeEdges: 90
+    numberOfRings: 10,
+    iterations: 80,
+    removeEdges: 50,
+    animatedEasing: true
 };
 
 function updateConfig(config)
@@ -38,7 +39,7 @@ function updateConfig(config)
     config.numFaces = calculateNumberOfFaces(config.numberOfRings)
     config.firstPassLen = config.numFaces * SIZE
     config.firstPassNumEdges = config.numFaces * 3
-    config.edgeLength = (config.height / (config.numberOfRings * 2 + 1))|0;
+    config.edgeLength = (config.height / (config.numberOfRings * 2 + 2))|0;
 
     config.recreate = cfg =>
     {
@@ -47,6 +48,7 @@ function updateConfig(config)
     }
     //console.log({config})
 }
+
 
 
 function createHexagonalTiles(config)
@@ -111,7 +113,7 @@ function createHexagonalTiles(config)
                     faces[off++] = (pos.y + v2.y) | 0;
                     off += 2;
                     faces[off++] = 3;
-                    faces[off++] = 1;
+                    faces[off++] = -1;
 
                     pos.add(v2);
                 }
@@ -126,7 +128,10 @@ function createHexagonalTiles(config)
                     faces[off++] = (pos.y + v1.y) | 0;
                     off += 2;
                     faces[off++] = 3;
-                    faces[off++] = count === limit ? 2 : 0;
+
+                    // All tris in the last row all have their edge #1 on the outer edge of the big hexagon
+                    const isOutmost = count === limit;
+                    faces[off++] = isOutmost ? 1 : -1;
                 }
             }
         }
@@ -225,18 +230,33 @@ function removeRandomEdges(config, faces)
     console.log("remove attempts", count);
 
     let success = 0;
+
+
+    function printEdge(faces, otherIndex, outMostEdge)
+    {
+        const count = faces[otherIndex + 8];
+        const x0 = faces[otherIndex + outMostEdge * 2]
+        const y0 = faces[otherIndex + outMostEdge * 2 + 1]
+        const x1 = outMostEdge === count -1 ? faces[otherIndex] : faces[otherIndex + (outMostEdge + 1) * 2]
+        const y1 = outMostEdge === count -1 ? faces[otherIndex + 1] : faces[otherIndex + (outMostEdge + 1) * 2 + 1]
+
+
+        return x0 + "," + y0 + "," + x1 + "," + y1;
+    }
+
+
     for (let i = 0; i < count; i++)
     {
         const index = ((Math.random() * config.numFaces) | 0) * SIZE;
         if (faces[index + 8] === 3)
         {
-            const caseMask = faces[index + 9];
-            const targetIsOddFace = !!(caseMask & 1);
-            const targetIsOutmostFace = !!(caseMask & 2);
+            const outmostEdge = faces[index + 9];
+            const targetIsOutmostFace = outmostEdge >= 0;
 
             const edge = (Math.random() * 3) | 0;
 
-            if (!(targetIsOutmostFace && edge === 1))
+            // we can't remove any of the outmost edges around the big hexagon
+            if (!(targetIsOutmostFace))//&& edge === outmostEdge))
             {
 
                 const x0 = faces[index + edge * 2];
@@ -250,6 +270,20 @@ function removeRandomEdges(config, faces)
                     const {index: otherIndex, edge: otherEdge} = out;
                     const x2 = edge === 0 ? faces[index + 2 * 2] : faces[index + (edge - 1) * 2];
                     const y2 = edge === 0 ? faces[index + 2 * 2 + 1] : faces[index + (edge - 1) * 2 + 1];
+
+
+                    // check if we're merging with an outmost face
+                    const outMostEdge = faces[otherIndex + 9];
+                    const otherIsOutmostTri = outMostEdge >= 0;
+
+
+                    const before = printEdge(faces, otherIndex, outMostEdge)
+                    // if (otherIsOutmostTri)
+                    // {
+                    //     console.log("OUTMOST edge before split", printEdge(faces, otherIndex, outMostEdge),"EDGE CASE", otherEdge, "outMostEdge", outMostEdge)
+                    //     console.log("face before", faces.slice(otherIndex, otherIndex + SIZE))
+                    // }
+
 
                     faces[otherIndex + 8] = 4;
                     switch (otherEdge)
@@ -271,10 +305,31 @@ function removeRandomEdges(config, faces)
                             faces[otherIndex + 5] = faces[otherIndex + 3];
                             faces[otherIndex + 2] = x2
                             faces[otherIndex + 3] = y2;
+
+                            if (otherIsOutmostTri)
+                            {
+                                faces[otherIndex + 9] = 2;
+                            }
+
                             break;
                     }
+
+                    // remove our face
                     faces[index + 8] = 0;
-                    //mark(faces, index,edge)
+
+                    // if (otherIsOutmostTri)
+                    // {
+                    //     console.log("OUTMOST edge after split", printEdge(faces, otherIndex, faces[otherIndex + 9]))
+                    //     console.log("face after", faces.slice(otherIndex, otherIndex + SIZE))
+                    // }
+
+
+                    const after = printEdge(faces, otherIndex, faces[otherIndex + 9])
+                    if (otherIsOutmostTri && before !== after)
+                    {
+                        console.log("Mismatch: before", before, "after", after, "CASE " + otherEdge);
+                    }
+
 
                     //console.log("Face #", printFace(faces,index), ", edge = ", edge, " paired with  Face #" + printFace(faces,out.index), ", edge = ", out.edge)
                     success++;
@@ -314,12 +369,7 @@ function calculateNumNodes(faces)
 }
 
 
-const NODE_SIZE = 6;
-
-const NORTH = 0;
-const EAST = 1;
-const SOUTH = 2;
-const WEST = 3;
+const NODE_SIZE = 10;
 
 
 function subdivide(config, faces)
@@ -330,15 +380,25 @@ function subdivide(config, faces)
 
     let pos = 0;
 
-    const insertNode = (x0, y0) => {
+    const insertNode = (x0, y0, isEdge ) => {
 
-        x0 |=0;
-        y0 |=0;
+        x0 |= 0;
+        y0 |= 0;
 
         for (let i = 0; i < pos; i += NODE_SIZE)
         {
             if (Math.abs(nodes[i] - x0) < 2 && Math.abs(nodes[i + 1] - y0) < 2)
             {
+                // if we discover an odd face vertex touching the outmost edge, we will
+                // not register that because the odd tris are not marked as having an outmost edge, because they don't, they
+                // only have one vertices on the edge at most
+                // Later we might however return to that node within an outmost edge and we have to make sure that
+                // we take over the isEdge status from such a node
+                if (isEdge && !nodes[i + 2])
+                {
+                    nodes[i + 2] = 1;
+                }
+
                 return i;
             }
         }
@@ -347,27 +407,54 @@ function subdivide(config, faces)
 
         nodes[pos] = x0;
         nodes[pos + 1] = y0;
+        nodes[pos + 2] = isEdge ? 1 : 0;
+        nodes[pos + 3] = 0;
 
-        nodes[pos + 2 + NORTH] = -1;
-        nodes[pos + 2 + EAST] = -1;
-        nodes[pos + 2 + SOUTH] = -1;
-        nodes[pos + 2 + WEST] = -1;
+        nodes[pos + 4] = -1;
+        nodes[pos + 5] = -1;
+        nodes[pos + 6] = -1;
+        nodes[pos + 7] = -1;
 
         pos += NODE_SIZE;
 
         return index;
     }
 
-    const connect = (n0, n1, dir) => {
+    const insertEdge = (n0, n1) => {
+            let count = nodes[n0 + 3];
 
-        nodes[n0 + 2 + dir] = n1;
-        nodes[n1 + 2 + ((dir + 2) & 3)] = n0;
+            let found = false;
+            for (let i=0; i < count; i++)
+            {
+                const other = nodes[n0 + 4 + i];
+                if (other === n1)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                if (count >= 6)
+                {
+                    throw new Error("At most 6 edges per node")
+                }
+
+                nodes[ n0 + 4 + count++] = n1;
+                nodes[n0 + 3] = count;
+            }
+
+    }
+    const connect = (n0, n1) => {
+
+        insertEdge(n0,n1);
+        insertEdge(n1,n0);
+
     }
 
     for (let i = 0; i < config.firstPassLen; i += SIZE)
     {
         const count = faces[i + 8];
-
         if (count === 0)
         {
             continue;
@@ -379,6 +466,11 @@ function subdivide(config, faces)
         const y1 = faces[i + 3]
         const x2 = faces[i + 4]
         const y2 = faces[i + 5]
+
+        const outmostEdge = faces[i + 9];
+
+        const firstEdgeIsOutmost = outmostEdge === 1;
+        const secondEdgeIsOutmost = outmostEdge === 2;
 
         if (count === 3)
         {
@@ -394,26 +486,26 @@ function subdivide(config, faces)
 
             const n0 = insertNode(x0, y0);
             const n1 = insertNode(m0x, m0y);
-            const n2 = insertNode(x1, y1);
-            const n3 = insertNode(m1x, m1y);
-            const n4 = insertNode(x2, y2);
+            const n2 = insertNode(x1, y1, firstEdgeIsOutmost);
+            const n3 = insertNode(m1x, m1y, firstEdgeIsOutmost);
+            const n4 = insertNode(x2, y2, firstEdgeIsOutmost);
             const n5 = insertNode(m2x, m2y);
             const n6 = insertNode(cx, cy);
 
-            connect(n0, n1, NORTH);
-            connect(n1, n6, EAST);
-            connect(n6, n5, SOUTH);
-            connect(n5, n0, WEST);
+            connect(n0, n1);
+            connect(n1, n6);
+            connect(n6, n5);
+            connect(n5, n0);
 
-            connect(n1, n2, NORTH);
-            connect(n2, n3, EAST);
-            connect(n3, n6, SOUTH);
-            connect(n6, n1, WEST);
+            connect(n1, n2);
+            connect(n2, n3);
+            connect(n3, n6);
+            connect(n6, n1);
 
-            connect(n5, n6, NORTH);
-            connect(n6, n3, EAST);
-            connect(n3, n4, SOUTH);
-            connect(n4, n5, WEST);
+            connect(n5, n6);
+            connect(n6, n3);
+            connect(n3, n4);
+            connect(n4, n5);
 
         }
         else
@@ -435,209 +527,120 @@ function subdivide(config, faces)
 
             const n0 = insertNode(x0, y0);
             const n1 = insertNode(m0x, m0y);
-            const n2 = insertNode(x1, y1);
-            const n3 = insertNode(m1x, m1y);
-            const n4 = insertNode(x2, y2);
-            const n5 = insertNode(m2x, m2y);
-            const n6 = insertNode(x3, y3);
+            const n2 = insertNode(x1, y1, firstEdgeIsOutmost);
+            const n3 = insertNode(m1x, m1y, firstEdgeIsOutmost);
+            const n4 = insertNode(x2, y2, firstEdgeIsOutmost || secondEdgeIsOutmost);
+            const n5 = insertNode(m2x, m2y, secondEdgeIsOutmost);
+            const n6 = insertNode(x3, y3, secondEdgeIsOutmost);
             const n7 = insertNode(m3x, m3y);
             const n8 = insertNode(cx, cy);
 
-            connect(n0, n1, NORTH);
-            connect(n1, n2, NORTH);
-            connect(n2, n3, EAST);
-            connect(n3, n4, EAST);
-            connect(n4, n5, SOUTH);
-            connect(n5, n6, SOUTH);
-            connect(n6, n7, WEST);
-            connect(n7, n0, WEST);
+            connect(n0, n1);
+            connect(n1, n2);
+            connect(n2, n3);
+            connect(n3, n4);
+            connect(n4, n5);
+            connect(n5, n6);
+            connect(n6, n7);
+            connect(n7, n0);
 
-            connect(n8, n3, NORTH);
-            connect(n8, n5, EAST);
-            connect(n8, n7, SOUTH);
-            connect(n8, n1, WEST);
+            connect(n8, n3);
+            connect(n8, n5);
+            connect(n8, n7);
+            connect(n8, n1);
         }
     }
 
-    console.log("SUBDIVIDED: limit = ", numNodes, ", fill rate = ", (pos / NODE_SIZE) / numNodes);
+    const fillRate = (pos / NODE_SIZE) / numNodes;
+    console.log("SUBDIVIDED: limit = ", numNodes, ", fill rate = ", fillRate);
 
     return nodes.slice(0, pos);
 }
 
-
-const PULL_POWER = 0.1;
-const PUSH_POWER = 0.2;
-
-/**
- * Maximum power being applied by a force
- */
-export const MAX_POWER = 10000;
-function maxPower(power)
+function relaxWeighted(config, graph, iterations = 1)
 {
-    return power < MAX_POWER ? power : MAX_POWER;
-}
 
-const SQRT_2 = Math.sqrt(2);
-
-function ease(config, graph, iterations = 1)
-{
-    const targetLength = config.edgeLength / 4;
-
-    const {length} = graph;
-
-    const minDistance = targetLength * SQRT_2;
-
-
-    function pullEdge(x0, y0, node, targetLength)
-    {
-        if (node >= 0)
-        {
-            const x1 = graph[node];
-            const y1 = graph[node + 1];
-
-            let dx = x1 - x0;
-            let dy = y1 - y0;
-
-            const len = Math.sqrt(dx * dx + dy * dy);
-
-            if (len > targetLength)
-            {
-                const dDelta = PULL_POWER * (len - targetLength) / targetLength;
-                const power = maxPower(dDelta * dDelta);
-
-
-                if (len === 0)
-                {
-                    return;
-                }
-
-                const f = power / len;
-                dx *= f;
-                dy *= f;
-
-                graph[node] -= dx;
-                graph[node + 1] -= dy;
-            }
-        }
-    }
-
-
-    function push(x0, y0, node)
-    {
-        const x1 = graph[node];
-        const y1 = graph[node + 1];
-        
-        let dx = x1 - x0;
-        let dy = y1 - y0;
-
-        const len = Math.sqrt(dx * dx + dy * dy);
-
-        if (len < minDistance)
-        {
-            const delta = PUSH_POWER * (minDistance - len) / minDistance ;
-            const power = maxPower(delta * delta);
-            const f = power / len;
-            dx *= f;
-            dy *= f;
-
-            graph[node] += dx;
-            graph[node + 1] += dy;
-        }
-
-    }
-
-
-    function pullAcross(x0, y0, n0, n1, targetLength)
-    {
-        if (n0 >= 0&& eastEdge)
-        {
-            const x0 = graph[eastEdge];
-            const y0 = graph[eastEdge + 1];
-            pullEdge(x0, y0, n0, targetLength * SQRT_2)
-        }
-
-
-    }
-
+    const { length } = graph;
 
     for (let i = 0; i < iterations; i++)
     {
         for (let j = 0; j < length; j += NODE_SIZE)
         {
-            const x0 = graph[j];
-            const y0 = graph[j + 1];
-
-            const northEdge = graph[j + 2];
-            const eastEdge = graph[j + 3];
-            const southEdge = graph[j + 4];
-            const westEdge = graph[j + 5];
-
-            pullEdge(x0, y0, northEdge, targetLength)
-            pullEdge(x0, y0, eastEdge, targetLength)
-            pullEdge(x0, y0, southEdge, targetLength)
-            pullEdge(x0, y0, westEdge, targetLength)
-
-            // pullAcross(x0, y0, northEdge, eastEdge, targetLength)
-            // pullAcross(x0, y0, southEdge, eastEdge, targetLength)
-            // pullAcross(x0, y0, southEdge, westEdge, targetLength)
-            // pullAcross(x0, y0, northEdge, westEdge, targetLength)
-
-            if (northEdge >= 0 && eastEdge >= 0)
+            if (!graph[j + 2])
             {
-                const x0 = graph[northEdge];
-                const y0 = graph[northEdge + 1];
-                pullEdge(x0, y0, eastEdge , targetLength * SQRT_2)
-            }
+                const x0 = graph[j]
+                const y0 = graph[j + 1]
+                const edgeCount = graph[j + 3]
 
-            if (southEdge >= 0 && eastEdge >= 0)
-            {
-                const x0 = graph[eastEdge];
-                const y0 = graph[eastEdge + 1];
-                pullEdge(x0, y0, southEdge, targetLength * SQRT_2)
-            }
+                let centerX = 0;
+                let centerY = 0;
+                let sumWeight = 0;
 
+                for (let k = 0; k < edgeCount; k++)
+                {
+                    const other = graph[j + 4 + k];
 
-            if (southEdge >= 0 && westEdge >= 0)
-            {
-                const x0 = graph[southEdge];
-                const y0 = graph[southEdge + 1];
-                pullEdge(x0, y0, westEdge, targetLength * SQRT_2)
-            }
+                    const x1 = graph[other];
+                    const y1 = graph[other + 1];
 
-            if (northEdge >= 0 && westEdge >= 0)
-            {
-                const x0 = graph[westEdge];
-                const y0 = graph[westEdge + 1];
-                pullEdge(x0, y0, northEdge, targetLength * SQRT_2)
-            }
+                    const dx = x1 - x0;
+                    const dy = y1 - y0;
 
-        }
+                    let weight = Math.sqrt(dx * dx + dy * dy);
 
+                    centerX += x1 * weight;
+                    centerY += y1 * weight;
+                    sumWeight += weight;
+                }
 
-        for (let j = 0; j < length; j += NODE_SIZE)
-        {
-            for (let k = length - NODE_SIZE; k > j; k -= NODE_SIZE)
-            {
-                const x0 = graph[j];
-                const y0 = graph[j + 1];
-
-                push(x0, y0, k)
+                graph[j] = centerX / sumWeight;
+                graph[j + 1] = centerY / sumWeight;
             }
         }
-
     }
+
+    //
+    //
+    //
+    // const neighbour = this.neighbours[i];
+    // let sumX = 0.;
+    // let sumY = 0.;
+    // let weight = 0.;
+    // for (let j = 0; j < neighbour.length; j++)
+    // {
+    //     // weighted by distance, the further two points are, the more they attract each other
+    //     // big edges will tend to shrink and small edges will tend to grow
+    //     // this results in slightly less variance in the quads area
+    //     // the grid also converges faster to equilibrium
+    //     let w = Math.sqrt(Math.pow(this.points[i][0] - this.points[neighbour[j]][0], 2) + Math.pow(this.points[i][1] - this.points[neighbour[j]][1], 2));
+    //
+    //     sumX += this.points[neighbour[j]][0] * w;
+    //     sumY += this.points[neighbour[j]][1] * w;
+    //     weight += w;
+    // }
+    // this.points[i][0] = sumX / weight;
+    // this.points[i][1] = sumY / weight;
 }
 
+let faces;
 function createGraph(config)
 {
     updateConfig(config);
 
     console.log("CREATE GRAPH", config);
 
-    const faces = createHexagonalTiles(config);
-    removeRandomEdges(config, faces)
-    const graph = subdivide(config, faces);
-    ease(config, graph, config.iterations);
+    const f = createHexagonalTiles(config);
+
+    faces = f//.slice();
+
+    removeRandomEdges(config, f)
+    const graph = subdivide(config, f);
+
+
+    if (!config.animatedEasing)
+    {
+        relaxWeighted(config, graph, config.iterations);
+    }
 
     console.log("GRAPH SIZE", graph.length / NODE_SIZE, graph);
 
@@ -648,24 +651,35 @@ let graph;
 
 function redrawGraph()
 {
-    ease(config, graph, config.iterations);
 
-    // // draw original quads and tris
+    ctx.save();
+
+    const hw = config.width /2;
+    const hh = config.height /2;
+
+    ctx.translate(hw, hh)
+
+
+
+    const {length} = graph;
+
+
+    ctx.fillStyle = "#000";
+    ctx.fillRect(-hw,-hh, config.width, config.height)
+
+    // draw original quads and tris
+
+    // ctx.strokeStyle = "#f00";
+    // ctx.lineWidth = 1;
     //
-    // ctx.strokeStyle = "#800";
-    // ctx.lineWidth = 4;
     //
-    //
+    // let outerCount = 0;
     // for (let pos = 0; pos < config.firstPassLen; pos += SIZE)
     // {
     //     const count = faces[pos + 8];
     //
     //     if (count >= 3)
     //     {
-    //         const caseMask = faces[pos + 9];
-    //         const targetIsOddFace = !!(caseMask & 1);
-    //         const targetIsOutmostFace = !!(caseMask & 2);
-    //
     //
     //         ctx.beginPath();
     //         ctx.moveTo(faces[pos ],faces[pos + 1]);
@@ -678,38 +692,49 @@ function redrawGraph()
     //         ctx.closePath();
     //         ctx.stroke();
     //
+    //         // const outmostEdge = faces[pos + 9];
+    //         // if (outmostEdge >= 0)
+    //         // {
+    //         //     ctx.strokeStyle = "#fe0";
+    //         //     ctx.beginPath();
+    //         //     ctx.moveTo(faces[pos + outmostEdge * 2  ],faces[pos + outmostEdge * 2 + 1]);
+    //         //
+    //         //     if (outmostEdge === count - 1)
+    //         //     {
+    //         //         ctx.lineTo(faces[pos  ],faces[pos + 1]);
+    //         //     }
+    //         //     else
+    //         //     {
+    //         //         ctx.lineTo(faces[pos + (outmostEdge + 1 ) * 2  ],faces[pos + (outmostEdge + 1 ) * 2 + 1]);
+    //         //     }
+    //         //     ctx.stroke();
+    //         //     ctx.strokeStyle = "#f00";
+    //         //
+    //         //     outerCount++;
+    //         //
+    //         // }
+    //
     //     }
     // }
-
-    ctx.save();
-
-    const hw = config.width /2;
-    const hh = config.height /2;
-
-    ctx.translate(hw, hh)
+///    console.log("Number of outer edges", outerCount)
 
 
-    ctx.strokeStyle = "#080";
-    ctx.lineWidth = 2;
+    //console.log("DRAW EDGES")
 
-    const {length} = graph;
+    ctx.strokeStyle = "#fff";
+    ctx.fillStyle = "#f0f";
+    ctx.lineWidth = 1;
 
-
-    ctx.fillStyle = "#000";
-    ctx.fillRect(-hw,-hh, config.width, config.height)
 
     function drawEdge(x0, y0, node)
     {
-        if (node >= 0)
-        {
-            const x1 = graph[node];
-            const y1 = graph[node + 1];
+        const x1 = graph[node];
+        const y1 = graph[node + 1];
 
-            ctx.beginPath();
-            ctx.moveTo(x0, y0);
-            ctx.lineTo(x1, y1);
-            ctx.stroke();
-        }
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
     }
 
 
@@ -717,22 +742,64 @@ function redrawGraph()
     {
         const x0 = graph[i];
         const y0 = graph[i + 1];
+        const edgeCount = graph[i + 3];
 
-        const northEdge = graph[i + 2];
-        const eastEdge = graph[i + 3];
-        const southEdge = graph[i + 4];
-        const westEdge = graph[i + 5];
-
-        drawEdge(x0, y0, northEdge)
-        drawEdge(x0, y0, eastEdge)
-        drawEdge(x0, y0, southEdge)
-        drawEdge(x0, y0, westEdge)
-
+        for (let j=0; j < edgeCount; j++)
+        {
+            drawEdge(x0, y0, graph[i + 4 + j])
+        }
     }
+    //
+    // for (let i = 0; i < length; i += NODE_SIZE)
+    // {
+    //     const x0 = graph[i];
+    //     const y0 = graph[i + 1];
+    //     const isEdge = graph[i + 2];
+    //
+    //     if (isEdge)
+    //     {
+    //         ctx.fillRect(x0 - 4,  y0 - 4, 8, 8)
+    //     }
+    // }
+
+    // ctx.strokeStyle = "#f00";
+    // ctx.lineWidth = 4;
+    //
+    // for (let pos = 0; pos < config.firstPassLen; pos += SIZE)
+    // {
+    //     const count = faces[pos + 8];
+    //     const outmostEdge = faces[pos + 9];
+    //
+    //
+    //     const last = count - 1;
+    //     for (let i=0; i < count; i++)
+    //     {
+    //         if (i === outmostEdge)
+    //         {
+    //             ctx.strokeStyle = "rgba(255,0,0,0.5)";
+    //         }
+    //         else
+    //         {
+    //             ctx.strokeStyle = "rgba(0,255,0,0.5)";
+    //         }
+    //
+    //         ctx.beginPath();
+    //         ctx.moveTo(faces[pos + i * 2], faces[pos + i * 2 + 1]);
+    //         ctx.lineTo(
+    //             i === last ? faces[pos    ] : faces[pos + (i+1) * 2],
+    //             i === last ? faces[pos + 1] : faces[pos + (i+1) * 2 + 1]
+    //         );
+    //         ctx.stroke();
+    //     }
+    // }
 
     ctx.restore();
 
-    raf(redrawGraph)
+    if (config.animatedEasing)
+    {
+        relaxWeighted(config, graph);
+        raf(redrawGraph)
+    }
 }
 
 
@@ -749,6 +816,8 @@ function resize()
 
 
     graph = createGraph(config)
+
+    //graph[6] = 1;
 
     raf(redrawGraph);
 }
